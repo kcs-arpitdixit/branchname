@@ -1,21 +1,85 @@
-name: Build
+name: Check testcases and quality gate status
+ 
 on:
-  push:
-    branches:
-      - '*'
   pull_request:
     branches:
-      - '*'
+      - "*"
+ 
 jobs:
-  build:
-    name: Build
+  sonarqube-analysis:
     runs-on: ubuntu-latest
+ 
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
+ 
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          fetch-depth: 0
-      - uses: docker://sonarsource/sonar-scanner-cli:latest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          node-version: "14"
+ 
+      - name: Install dependencies
+        run: npm install
+ 
+      - name: Run testcases with generatig coverage report
+        run: |
+          npm test --coverage --coverageReporters=text-lcov | tee coverage.lcov
+          echo "exit_code=$((${PIPESTATUS[0]}))" >> $GITHUB_ENV
+          echo "Hello semicolon;"
+ 
+      - name: Check test exit code
+        run: |
+          if [ $exit_code -ne 0 ]; then
+              echo "Test cases failed !! Exiting..."
+              exit 1
+          else
+              echo "cheers up, all Test cases are passed !!"
+          fi
+ 
+      - name: Set branch name
+        id: set_branch
+        run: |
+          if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
+          BRANCH_NM=${GITHUB_HEAD_REF}
+          else
+          BRANCH_NM=$(echo ${GITHUB_REF#refs/heads/})
+          fi
+          echo "BRANCH_NAME=((${BRANCH_NE}))" >> $GITHUB_ENV
+      - name: Scanning the project with sonarQube scanner
+        run: |
+          if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
+            BRANCH_NAME=${GITHUB_HEAD_REF}
+          else
+            BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
+          fi
+            echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          npm install -g sonarqube-scanner
+            sonar-scanner \
+              -Dsonar.host.url='http://sonarqube.kcspl.in:9000/' \
+              -Dsonar.projectKey='kcs-arpitdixit_branchname' \
+              -Dsonar.login=cab872eb9f133e53532de29a9fb7bec0cd9b61e2 \
+              -Dsonar.branch.name=$BRANCH_NAME
+ 
+      - name: identify SonarQube Quality Gate status
+        id: quality_gate_status
+        run: |
+          echo "Identifying quality gate status..."
+          if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
+            BRANCH_NAME=${GITHUB_HEAD_REF}
+          else
+            BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
+          fi
+            echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+ 
+          STATUS=$(curl -s "http://sonarqube.kcspl.in:9000/api/qualitygates/project_status?projectKey=kcs-arpitdixit_branchname&branch=${BRANCH_NAME}" -u "89f09c21d9b7f2f8e67b98200b5772794b4c2872" | jq -r '.projectStatus.status')
+          echo "Quality Gate Status for branch $BRANCH_NAME: $STATUS"
+          echo "QUALITY_GATE_STATUS=$STATUS" >> $GITHUB_ENV
+ 
+      - name: Check Quality Gate status
+        run: |
+          if [ "$QUALITY_GATE_STATUS" != "OK" ]; then
+            echo "SonarQube Quality Gate Failed for branch $BRANCH_NAME!!"
+            exit 1
+          else
+            echo "SonarQube Quality Gate passed for branch $BRANCH_NAME!!"
+          fi
