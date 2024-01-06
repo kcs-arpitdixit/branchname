@@ -1,3 +1,1 @@
-function msg(){  
-alert("Hello This is  feature 3.");  
-}  
+console.log("hi")
