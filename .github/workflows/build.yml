@@ -41,22 +41,17 @@ jobs:
               -Dsonar.projectKey='kcs-arpitdixit_branchname' \
               -Dsonar.login=cab872eb9f133e53532de29a9fb7bec0cd9b61e2 \
               -Dsonar.branch.name=$BRANCH_NAME
+              -Dsonar.pullrequest.key=${{ github.event.number }}
+              -Dsonar.pullrequest.branch=${{ github.HEAD_REF }}
+              -Dsonar.pullrequest.base=${{ github.BASE_REF }}
  
       - name: identify SonarQube Quality Gate status
         id: quality_gate_status
         run: |
           echo "Identifying quality gate status..."
-          if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
-            BRANCH_NAME=${GITHUB_HEAD_REF}
-          else
-            BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
-          fi
-            echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
- 
-          STATUS=$(curl -s "http://sonarqube.kcspl.in:9000/api/qualitygates/project_status?projectKey=kcs-arpitdixit_branchname&branch=${BRANCH_NAME}" -u "89f09c21d9b7f2f8e67b98200b5772794b4c2872" | jq -r '.projectStatus.status')
-          echo "Quality Gate Status for branch $BRANCH_NAME: $STATUS"
-          echo "QUALITY_GATE_STATUS=$STATUS" >> $GITHUB_ENV
- 
+          STATUS=$(curl -s "http://sonarqube.kcspl.in:9000/api/qualitygates/project_status?projectKey=kcs-arpitdixit_branchname&pullRequest=${{ github.event.number }}" -u "89f09c21d9b7f2f8e67b98200b5772794b4c2872" | jq -r '.projectStatus.status')
+          echo "Quality Gate Status : $STATUS"
+          
       - name: Check Quality Gate status
         run: |
           if [ "$QUALITY_GATE_STATUS" != "OK" ]; then
